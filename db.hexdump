@@ -1,0 +1,49 @@
+# mandoc.db
+
+[DB HEADER]
+00000000: 3a7d0cdb - magic number
+00000004: 00000001 - version number
+00000008: 000a96f8 - pointer to macros table
+0000000c: 000a986c - pointer to final magic number
+
+[END]
+000a986c: 3a7d0cdb - final magic number
+
+[PAGES TABLE]
+00000010: 000014cf - 5327 total man pages
+
+[PAGE ENTRY]
+# Each page entry is followed by zero to three NULL bytes.
+00000014: 0001a040 - pointer to list of names
+00000018: 0004baac - pointer to list of sections
+0000001c: 00000000 - pointer to list of archs or 0 if machine-independent
+00000020: 0005135e - pointer to description
+00000024: 000795d0 - pointer to list of filenames
+
+[NAMES LIST]
+# Preceded by a single byte indicating the sources of the name:
+#   0x10: The name appears in a filename.
+#   0x08: The name appears in a header line, i.e. in a .Dt or .TH macro.
+#   0x04: The name is the first one in the title line,
+#         i.e. it appears in the first .Nm macro in the NAME section.
+#   0x02: The name appears in any .Nm macro in the NAME section.
+#   0x01: The name appears in an .Nm block in the SYNOPSIS section.
+#
+0001a040: 1061 7270 615f 696e 6574 2e68 0000      .arpa_inet.h..
+
+[SECTIONS LIST]
+# Each section is given as a string, not as a number.
+0004baac: 3050 0030 7000 0030 5000 3070 0000 3050  0P.0p..0P.0p..0P
+0004babc: 0030 7000 0030 5000 3070 0000 3050 0030  .0p..0P.0p..0P.0
+0004bacc: 7000 0030 5000 3070 0000 3050 0030 7000  p..0P.0p..0P.0p.
+
+[DESCRIPTION STRING]
+0005135e: 6172 7061 5f69 6e65 742e 6800           arpa_inet.h.
+
+[FILENAMES LIST]
+# The first filename is preceded by a single byte:
+#   0x01: The file format is mdoc(7) or man(7).
+#   0x02: The manual page is preformatted.
+#
+000795d0: 016d 616e 3070 2f61 7270 615f 696e 6574 .man0p/arpa_inet
+000795e0: 2e68 2e30 702e 677a 0000                .h.0p.gz..
