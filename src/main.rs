@@ -7,6 +7,62 @@ use std::io::{self, BufRead, Write};
 use std::num::TryFromIntError;
 use std::str;
 
+// Data types utilized by the database:
+// * Number: a 32-bit signed integer with big endian byte order.
+// * String: a NUL-terminated array of bytes.
+// * Strings list: An array of strings that is terminated by a second NUL
+//   following the final entry.
+
+// A mandoc.db file consists of (in order):
+// 1. The "magic number" (i.e. 0x3a7d0cdb).
+// 2. The version number (currently 1).
+// 3. The index of the MACROS TABLE.
+// 4. The index of the "magic number" located at the end of the file.
+// 5. The PAGES TABLE.
+// 6. The MACROS TABLE.
+// 7. The "magic number", again.
+
+// The PAGES TABLE consists of (in order):
+// 1. The total number of PAGE entries.
+// 2. The PAGE entries.
+//
+// Each PAGE entry consists of (in order):
+// 1. The index of the name strings list.
+//   a. Each name consists of (in order):
+//     * A name sources byte (see below).
+//     * The name string.
+// 2. The index of the section strings list.
+// 3. The index of the architecture strings list.
+//   a. An index value of 0 indicates the page is machine-independent.
+// 4. The index of the one-line description string.
+// 5. The index of the filename strings list.
+//   a. The first filename is preceded a byte indicating the page's format:
+//     * 0x01: either mdoc(7) or man(7).
+//     * 0x02: preformatted.
+
+// The bits in a name sources byte indicate where the name appears:
+// 0b00000001: a SYNOPSIS section .Nm block.
+// 0b00000010: any NAME section .Nm macro.
+// 0b00000100: the first NAME section .Nm macro.
+// 0b00001000: a header line (i.e. a .Dt or .TH macro).
+// 0b00010000: a file name.
+
+// The MACROS TABLE consists of (in order):
+// 1. The total number of MACRO TABLEs (currently 36).
+// 2. The index of each MACRO TABLE.
+//
+// Each MACRO TABLE consists of (in order):
+// 1. The total number of MACRO VALUE entries.
+// 2. The MACRO VALUE entries.
+//
+// Each MACRO VALUE consists of (in order):
+// 1. The index of the macro value string (#3 in this table).
+// 2. The index of a list of pages (#5 in this table).
+// 3. The macro string value.
+// 4. Zero to three NUL bytes for padding.
+// 5. A list of index values for the list of names for the pages in the list
+//    pointed to by #2 of this table.
+
 const DB_MAGIC_NUMBER: usize = 0x3a7d0cdb;
 const DB_VERSION_NUMBER: usize = 0x1;
 
@@ -106,8 +162,6 @@ impl<'a> Database<'a> {
             // Pages table starts at 20 bytes and a page's size is 20 bytes.
             let start_idx = pages_start_idx + (page_size * page_idx);
             pages.push(Page::parse(bytes, start_idx)?);
-
-            // TODO pages can end in 1-3 NUL bytes. Check for them here.
         }
 
         // Ensure the expected number of pages are present.
