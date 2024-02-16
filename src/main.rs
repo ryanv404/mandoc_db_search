@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let bytes = fs::read(&args[1])?;
 
     let db = Database::parse(&bytes)?;
-    db.print_summary();
+    db.print_intro();
 
     let mut out = io::stdout().lock();
     let mut line = String::with_capacity(250);
@@ -191,7 +191,7 @@ impl<'a> Database<'a> {
         println!("No results for \"{query}\".\n");
     }
 
-    fn print_summary(&self) {
+    fn print_intro(&self) {
         println!(
             "[MANDOC.DB]\n* Contains {} man page {}.",
             self.total_pages,
@@ -229,6 +229,6 @@ impl<'a> Database<'a> {
             }
         }
 
-        println!();
+        println!("* Type \"quit\" to exit.\n");
     }
 }
