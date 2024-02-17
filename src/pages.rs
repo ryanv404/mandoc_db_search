@@ -1,8 +1,8 @@
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::error::Error;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str;
 
-use crate::{parse_num, parse_list};
+use crate::utils::{parse_list, parse_num, print_list};
 
 // The Pages table consists of (in order):
 // 1. The total number of Page entries.
@@ -64,8 +64,7 @@ impl<'a> Name<'a> {
         start: usize
     ) -> Result<Vec<Name<'a>>, Box<dyn Error>> {
         let mut names = Vec::with_capacity(10);
-        let item_iter = bytes[start..]
-            .split_inclusive(|b| *b == 0);
+        let item_iter = bytes[start..].split_inclusive(|b| *b == 0);
 
         for item_bytes in item_iter {
             match item_bytes.len() {
@@ -128,35 +127,6 @@ pub struct Page<'a> {
     pub format: PageFormat,
 }
 
-impl<'a> Display for Page<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        for (i, name) in self.names.iter().enumerate() {
-            writeln!(f, "* Name[{i}]: {name} (source: 0x{:02x})", name.source)?;
-        }
-
-        for (i, sect) in self.sects.iter().enumerate() {
-            writeln!(f, "* Section[{i}]: {sect}")?;
-        }
-
-        match self.archs.as_ref() {
-            None => writeln!(f, "* Arch: machine-independent")?,
-            Some(archs) => {
-                for (i, arch) in archs.iter().enumerate() {
-                    writeln!(f, "* Arch[{i}]: {arch}")?;
-                }
-            },
-        }
-
-        writeln!(f, "* Desc: {}", &self.desc)?;
-
-        for (i, file) in self.files.iter().enumerate() {
-            writeln!(f, "* File[{i}]: {file}")?;
-        }
-
-        write!(f, "* Format: {}", self.format)
-    }
-}
-
 // Each PAGE entry consists of (in order):
 // 1. The index of the name strings list.
 //   a. Each name consists of (in order):
@@ -206,5 +176,21 @@ impl<'a> Page<'a> {
         let format = PageFormat::from(bytes[files_start]);
 
         Ok(Self { names, sects, archs, desc, files, format })
+    }
+
+    pub fn print(&self) {
+        let names = self.names.iter().map(|n| n.value).collect::<Vec<&str>>();
+        print!("* Names: ");
+        print_list(&names[..]);
+        print!("* Sections: ");
+        print_list(&self.sects[..]);
+        print!("* Architectures: ");
+        self.archs.as_ref().map_or_else(
+            || println!("machine-independent"),
+            |archs| print_list(&archs[..]));
+        println!("* Description: {}", self.desc);
+        print!("* Files: ");
+        print_list(&self.files[..]);
+        println!("* Format: {}", self.format);
     }
 }

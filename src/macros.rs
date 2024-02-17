@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::str;
 
-use crate::parse_num;
 use crate::pages::Name;
+use crate::utils::parse_num;
 
 // The MACROS TABLE consists of (in order):
 // 1. The total number of MACRO TABLEs (currently 36).

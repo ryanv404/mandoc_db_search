@@ -1,99 +1,73 @@
-#![deny(clippy::all)]
-#![deny(clippy::cargo)]
-#![deny(clippy::complexity)]
-#![deny(clippy::correctness)]
-#![deny(clippy::nursery)]
-#![deny(clippy::pedantic)]
-#![deny(clippy::perf)]
-#![deny(clippy::style)]
-#![deny(clippy::suspicious)]
-
-use std::convert::TryFrom;
 use std::env;
 use std::error::Error;
 use std::fmt::Debug;
 use std::fs;
 use std::io::{self, BufRead, Write};
-use std::num::TryFromIntError;
 use std::str;
 
 mod macros;
 mod pages;
+mod utils;
 
-use pages::{PageFormat, Pages};
 use macros::Macros;
+use pages::{PageFormat, Pages};
+use utils::{parse_num, print_help, print_list};
 
-const DB_MAGIC_NUMBER: usize = 0x3a7d0cdb;
+const DB_MAGIC_NUMBER: usize = 0x3a7d_0cdb;
 const DB_VERSION_NUMBER: usize = 0x1;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let mut do_search = false;
     let args = env::args().collect::<Vec<String>>();
 
-    if args.len() != 2 {
-        let name = env!("CARGO_PKG_NAME");
-        eprintln!("usage: ./{name} <MANDOC_DB_FILE_PATH>");
+    let db_path = match args.len() {
+        2 if args[1] == "-h" || args[1] == "--help" => {
+            print_help();
+            return Ok(());
+        },
+        2 if !args[1].starts_with('-') => &args[1],
+        3 if (args[1] == "-s" || args[1] == "--search")
+            && !args[2].starts_with('-') => {
+            do_search = true;
+            &args[2]
+        },
+        _ => {
+            print_help();
+            return Ok(());
+        },
+    };
+
+    let bytes = fs::read(db_path)?;
+    let db = Database::parse(&bytes)?;
+
+    db.print_summary();
+
+    if !do_search {
         return Ok(());
     }
 
-    let bytes = fs::read(&args[1])?;
-    let db = Database::parse(&bytes)?;
-
-    db.print_intro();
+    println!("* Type \"quit\" to exit.\n");
 
     let mut out = io::stdout().lock();
-    let mut line = String::with_capacity(100);
+    let mut line = String::with_capacity(50);
 
     loop {
         write!(&mut out, "SEARCH: ")?;
         out.flush()?;
 
         line.clear();
-        io::stdin()
-            .lock()
-            .read_line(&mut line)?;
+        io::stdin().lock().read_line(&mut line)?;
 
         let query = line.trim();
-
-        if query.is_empty() {
-            continue;
-        } else if query.eq_ignore_ascii_case("quit") {
-            break;
-        } else {
-            db.search(query);
+        match query.len() {
+            0 => continue,
+            1 if query == "q" => break,
+            4 if query.eq_ignore_ascii_case("quit") => break,
+            _ => db.search(query),
         }
     }
 
     Ok(())
-}
-
-fn parse_num(bytes: &[u8], start: usize) -> Result<usize, TryFromIntError> {
-    assert!(start + 3 < bytes.len());
-
-    let mut int_bytes = [0u8; 4];
-    int_bytes.copy_from_slice(&bytes[start..=start + 3]);
-    usize::try_from(u32::from_be_bytes(int_bytes))
-}
-
-fn parse_list(
-    bytes: &[u8],
-    start: usize
-) -> Result<Vec<&str>, Box<dyn Error>> {
-    let mut list = Vec::with_capacity(10);
-    let strings_iter = bytes[start..].split_inclusive(|b| *b == 0);
-
-    for string_bytes in strings_iter {
-        match string_bytes.len() {
-            0 => return Err("Parsed an unexpected empty string.".into()),
-            // A NUL byte marks the end of a list.
-            1 if string_bytes[0] == 0 => break,
-            len => {
-                let s = str::from_utf8(&string_bytes[..(len - 1)])?;
-                list.push(s);
-            },
-        }
-    }
-
-    Ok(list)
 }
 
 // Database data types:
@@ -144,7 +118,8 @@ impl<'a> Database<'a> {
         for page in &self.pages.table {
             for name in &page.names {
                 if name.value.eq_ignore_ascii_case(query) {
-                    println!("{}\n", &page);
+                    page.print();
+                    println!();
                     return;
                 }
             }
@@ -153,15 +128,34 @@ impl<'a> Database<'a> {
         println!("No results for \"{query}\".\n");
     }
 
-    fn print_intro(&self) {
-        println!(
-            "[MANDOC.DB]\n* Contains {} man page {}.",
-            self.pages.count,
-            if self.pages.count == 1 { "entry" } else { "entries" }
+    const fn num_pages(&self) -> usize {
+        self.pages.count
+    }
+
+    fn num_files(&self) -> usize {
+        self.pages.table.iter().map(|p| p.files.len()).sum()
+    }
+
+    const fn num_macros(&self) -> usize {
+        self.macros.count
+    }
+
+    fn print_summary(&self) {
+        println!("\
+            [MANDOC.DB]\n\
+            * Contains {} macro {}.\n\
+            * Contains {} man page {} generated from {} man page {}.",
+            self.num_macros(),
+            if self.num_macros() == 1 { "entry" } else { "entries" },
+            self.num_pages(),
+            if self.num_pages() == 1 { "entry" } else { "entries" },
+            self.num_files(),
+            if self.num_files() == 1 { "file" } else { "files" }
         );
 
-        let unknowns_iter = self.pages.table.iter();
-        let unknowns = unknowns_iter
+        let page_idx_vec = self.pages
+            .table
+            .iter()
             .enumerate()
             .filter_map(|(idx, page)| match page.format {
                 PageFormat::MdocMan => None,
@@ -169,27 +163,23 @@ impl<'a> Database<'a> {
             })
             .collect::<Vec<usize>>();
 
-        match unknowns.len() {
-            0 => {
-                println!("* All pages use man(7) or mdoc(7).\n");
-                return;
-            },
-            1 => println!("* One page does not use man(7) or mdoc(7)."),
-            num => println!("* {num} pages do not use man(7) or mdoc(7)."),
+        if page_idx_vec.is_empty() {
+            println!("* All pages use man(7) or mdoc(7).");
+            return;
+        } else if page_idx_vec.len() == 1 {
+            print!("* One page does not use man(7) or mdoc(7): ");
+        } else {
+            let num = page_idx_vec.len();
+            print!("* {num} pages do not use man(7) or mdoc(7): ");
         }
 
-        for (count, idx) in unknowns.iter().enumerate() {
-            if count == 5 {
-                // Only print the first 5 items.
-                println!("    - ...\n");
-                return;
-            } else if self.pages.table[*idx].names.len() == 1 {
-                println!("    - {}", self.pages.table[*idx].names[0]);
-            } else {
-                println!("    - {:?}", &self.pages.table[*idx].names);
-            }
-        }
+        let names = page_idx_vec
+            .into_iter()
+            .flat_map(|idx| {
+                self.pages.table[idx].names.iter().map(|n| n.value)
+            })
+            .collect::<Vec<&str>>();
 
-        println!("* Type \"quit\" to exit.\n");
+        print_list(&names[..]);
     }
 }
