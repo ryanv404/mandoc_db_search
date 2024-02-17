@@ -1,6 +1,6 @@
 # mandoc_db_search
 
-A simple tool to query a mandoc.db database file.
+A simple tool to query man page entries in a mandoc.db database file.
 
 ## Usage
 ```

@@ -1,6 +1,6 @@
 [package]
 name = "mandoc_db_search"
-description = "A simple tool to query a mandoc.db database file."
+description = "A simple tool to query man page entries in a mandoc.db database file."
 authors = ["ryanv404"]
 version = "0.1.0"
 edition = "2021"
